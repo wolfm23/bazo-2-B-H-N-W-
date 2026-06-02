@@ -5,15 +5,17 @@ const cheerio = require("cheerio");
 const app = express();
 const port = process.env.PORT || 3000;
 const publicPath = path.join(__dirname, "public");
+const imagesPath = path.join(__dirname, "images");
 
 const JOBS_URL =
   "https://www.jenprace.cz/brigady/kralovehradecky-kraj?ld%5Bkralovehradecky-kraj%5D=0";
-const ALZA_URL = "https://www.alza.cz/tv-podstavce/18852647.htm";
+const ALZA_PRIMARY_URL = "https://www.alza.cz/";
+const ALZA_FALLBACK_URL = "https://www.alza.cz/tv-podstavce/18852647.htm";
 const CACHE_TTL = 10 * 60 * 1000;
 
 const cache = {
   jobs: { timestamp: 0, data: [] },
-  alza: { timestamp: 0, data: [] },
+  alza: { timestamp: 0, data: [], source: ALZA_PRIMARY_URL },
 };
 
 const DEFAULT_HEADERS = {
@@ -116,6 +118,35 @@ const parseAlza = (html) => {
   return items;
 };
 
+const loadAlzaOffers = async () => {
+  const sources = [ALZA_PRIMARY_URL, ALZA_FALLBACK_URL];
+  let lastError = null;
+  for (const url of sources) {
+    try {
+      const items = parseAlza(await fetchHtml(url));
+      if (items.length > 0) {
+        return { items, source: url };
+      }
+      lastError = new Error(`Žádné nabídky nebyly nalezeny na ${url}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error("Nepodařilo se načíst nabídky z Alzy.");
+};
+
+const getCachedAlza = async () => {
+  const now = Date.now();
+  if (cache.alza.data.length > 0 && now - cache.alza.timestamp < CACHE_TTL) {
+    return cache.alza;
+  }
+  const { items, source } = await loadAlzaOffers();
+  cache.alza.data = items;
+  cache.alza.source = source;
+  cache.alza.timestamp = now;
+  return cache.alza;
+};
+
 app.get("/api/jobs", async (req, res) => {
   try {
     const data = await getCached("jobs", async () => parseJobs(await fetchHtml(JOBS_URL)));
@@ -131,17 +162,20 @@ app.get("/api/jobs", async (req, res) => {
 
 app.get("/api/alza", async (req, res) => {
   try {
-    const data = await getCached("alza", async () => parseAlza(await fetchHtml(ALZA_URL)));
+    const cached = await getCachedAlza();
     res.json({
-      source: ALZA_URL,
-      updatedAt: new Date(cache.alza.timestamp).toISOString(),
-      items: data,
+      source: cached.source,
+      updatedAt: new Date(cached.timestamp).toISOString(),
+      items: cached.data,
+      fallbackUsed: cached.source !== ALZA_PRIMARY_URL,
     });
   } catch (error) {
     res.status(502).json({ error: "Nepodařilo se načíst nabídky z Alzy." });
   }
 });
 
+app.use("/images", express.static(imagesPath));
+app.use("/image", express.static(imagesPath));
 app.use(express.static(publicPath));
 
 app.use((req, res) => {

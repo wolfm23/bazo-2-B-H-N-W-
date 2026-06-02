@@ -202,7 +202,9 @@ const buildOffersDemo = () => {
       }
       products = payload.items || [];
       const updated = payload.updatedAt ? new Date(payload.updatedAt).toLocaleString("cs-CZ") : "neznámo";
-      statusText.textContent = `Zdroj: Alza.cz · aktualizováno ${updated}`;
+      const sourceLabel = payload.source ? payload.source.replace(/^https?:\/\//, "") : "Alza.cz";
+      const fallbackNote = payload.fallbackUsed ? " (náhradní zdroj)" : "";
+      statusText.textContent = `Zdroj: ${sourceLabel}${fallbackNote} · aktualizováno ${updated}`;
       renderOffers();
     } catch (error) {
       statusText.textContent = "Nepodařilo se načíst nabídky z Alzy.";
@@ -791,11 +793,43 @@ const buildLikesDemo = () => {
 };
 
 const buildDatingDemo = () => {
-  const profiles = [
-    { name: "Tereza", age: 26, city: "Praha", bio: "Miluju kavárny, design a procházky se psem." },
-    { name: "David", age: 31, city: "Brno", bio: "Sportovec, cyklista a kuchař amatér." },
-    { name: "Simona", age: 28, city: "Ostrava", bio: "Ráda cestuju a objevují nové chutě." },
+  const botImageBase = "/image/images_for_bots";
+  const maleImages = ["muz1.png", "muz2.png", "muz3.png"];
+  const femaleImages = ["Zena1.png", "Zena2.png", "Zena3.png"];
+  const maleNames = ["David", "Petr", "Michal", "Tomáš", "Lukáš", "Honza"];
+  const femaleNames = ["Tereza", "Simona", "Lucie", "Kristýna", "Anna", "Veronika"];
+  const cities = ["Praha", "Brno", "Ostrava", "Plzeň", "Olomouc", "Hradec Králové"];
+  const maleBios = [
+    "Sportovec, cyklista a kuchař amatér.",
+    "Hory, kolo, dobrá káva a klidný večer.",
+    "Miluju cestování a deskové hry.",
   ];
+  const femaleBios = [
+    "Miluju kavárny, design a procházky se psem.",
+    "Ráda cestuju a objevuji nové chutě.",
+    "Hudba, výlety a plánování dalších dobrodružství.",
+  ];
+
+  const pickRandom = (items) => items[Math.floor(Math.random() * items.length)];
+
+  const createBotProfiles = (count) =>
+    Array.from({ length: count }, () => {
+      const gender = Math.random() < 0.5 ? "male" : "female";
+      const name = pickRandom(gender === "male" ? maleNames : femaleNames);
+      const age = Math.floor(Math.random() * 12) + 22;
+      const city = pickRandom(cities);
+      const bio = pickRandom(gender === "male" ? maleBios : femaleBios);
+      const imageFile = pickRandom(gender === "male" ? maleImages : femaleImages);
+      return {
+        name,
+        age,
+        city,
+        bio,
+        image: `${botImageBase}/${imageFile}`,
+      };
+    });
+
+  const profiles = createBotProfiles(9);
   let index = 0;
   const matches = [];
 
@@ -816,6 +850,14 @@ const buildDatingDemo = () => {
       return;
     }
     const profile = profiles[index];
+    if (profile.image) {
+      const img = document.createElement("img");
+      img.src = profile.image;
+      img.alt = `Profil ${profile.name}`;
+      img.loading = "lazy";
+      img.className = "profile-photo";
+      card.append(img);
+    }
     card.append(createElement("h3", null, `${profile.name}, ${profile.age}`));
     card.append(createElement("p", "hint", profile.city));
     card.append(createElement("p", null, profile.bio));
